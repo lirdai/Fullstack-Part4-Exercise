@@ -1,0 +1,771 @@
+4.1 - 4.2 Blog list
+
+*********************************index.js***********************************
+const app = require('./app.js') 
+const http = require('http')
+const config = require('./config')
+
+
+const server = http.createServer(app)
+
+
+server.listen(config.PORT, () => {
+  console.log(`Server running on port ${config.PORT}`)
+})
+
+**********************************app.js************************************
+const express = require('express')
+const app = express()
+const bodyParser = require('body-parser')
+const cors = require('cors')
+const Router = require("./Router.js")
+const Middleware = require('./Middleware')
+
+
+app.use(cors())
+app.use(bodyParser.json())
+app.use('/blogs', Router)
+
+
+app.use(Middleware)
+
+
+module.exports = app
+
+*********************************Router.js***********************************
+const Router = require("express").Router()
+const Blog = require("./Mongoose.js")
+
+Router.get('/', (req, res, next) => {
+  Blog
+	.find({})
+	.then(blogs => {
+		res.json(blogs.map(blog => blog.toJSON()))
+	})
+	.catch(error => next(error))
+})
+
+Router.get('/:id', (req, res, next) => {
+	const id = req.params.id
+	
+	Blog
+		.findById(id)
+		.then(blog => res.json(blog.toJSON()))
+		.catch(error => next(error))
+})
+
+Router.post('/', (req, res, next) => {
+	const body = req.body 
+	const id = req.params.id
+
+	if (!body.url || !body.title) {
+		return res.status(400).json({error: "Information Missing"})
+	}
+
+	const blog = new Blog({
+		title: body.title,
+		author: body.author,
+		url: body.url,
+		likes: 0
+	})
+	
+	blog
+		.save()
+		.then(savedBlog => res.json(savedBlog.toJSON()))
+		.catch(error => next(error))
+})
+
+Router.delete('/:id', (req, res, next) => {
+	const id = req.params.id
+	
+	Blog
+		.findByIdAndRemove(id)
+		.then(result => res.status(204).end())
+		.catch(error => next(error))
+})
+
+Router.put('/:id', (req, res, next) => {
+	const id = req.params.id
+	const body = req.body
+	
+	
+	const blog = {
+		title: body.title,
+		author: body.author,
+		url: body.url,
+		likes: 0
+	}
+	
+	Blog
+		.findByIdAndUpdate(id, blog, {new : true})
+		.then(updatedBlog => res.json(updatedBlog.toJSON()))
+		.catch(error => next(error))
+})
+
+
+module.exports = Router
+
+********************************Middleware.js********************************
+const errorHandler = (error, req, res, next) => {
+	console.log(error)
+	
+	res.status(400).send("Something Wrong")
+	
+	next(error)
+}
+
+module.exports = errorHandler
+
+*********************************Mongoose.js*********************************
+const mongoose = require('mongoose')
+const validator = require('mongoose-unique-validator')
+const config = require('./config')
+
+
+console.log('connecting to', config.MONGODB_URI)
+
+mongoose
+	.connect(config.MONGODB_URI, { useFindAndModify: false, useCreateIndex: true,					useUnifiedTopology: true, useNewUrlParser: true })
+	.then(result => {
+		console.log('connected to MongoDB')
+  })
+	.catch((error) => {
+		console.log('error connecting to MongoDB:', error.message)
+  })
+
+const blogSchema = new mongoose.Schema({
+  title: {
+	type: String,
+	require: true
+  },
+  author: String,
+  url: {
+	  type: String,
+	  required: true,
+	  unique: true
+  },
+  likes: Number
+})
+
+blogSchema.plugin(validator)
+
+blogSchema.set('toJSON', {
+  transform: (document, blog) => {
+    blog.id = blog._id.toString()
+    delete blog._id
+    delete blog.__v
+  }
+})
+
+
+module.exports = mongoose.model('Blog', blogSchema)
+
+***********************************config.js*********************************
+require('dotenv').config()
+
+let PORT = process.env.PORT
+let MONGODB_URI = process.env.MONGODB_URI
+
+module.exports = {
+  MONGODB_URI,
+  PORT
+}
+
+
+
+4.3 - 4.5 helper functions and unit tests
+
+************************************testing.js*******************************
+const favoriteBlog = (blogs) => {
+	let max = -1, maxKey = -1
+	
+	for (let i = 0; i < blogs.length; i++) {
+		if (blogs[i].likes > max) {
+			max = blogs[i].likes
+			maxKey = i
+		}
+	}
+	
+	if (blogs.length === 0) {
+		return "blogs empty"
+	}
+	
+	console.log(maxKey)
+	
+	const result = {
+		title: blogs[maxKey].title,
+		author: blogs[maxKey].author,
+		likes: blogs[maxKey].likes
+	}
+	
+	return result
+}
+
+
+
+module.exports = {
+	favoriteBlog
+}
+
+*********************************index.test.js**********************************
+const favoriteBlog = require('./testing.js')
+
+test('Blog likes', () => {
+	const blogs = [
+		{
+			_id: "5a422a851b54a676234d17f7",
+			title: "React patterns",
+			author: "Michael Chan",
+			url: "https://reactpatterns.com/",
+			likes: 7,
+			__v: 0
+		},
+		{
+			_id: "5a422aa71b54a676234d17f8",
+			title: "Go To Statement Considered Harmful",
+			author: "Edsger W. Dijkstra",
+			url: "http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html",
+			likes: 5,
+			__v: 0
+		},
+		{
+			_id: "5a422b3a1b54a676234d17f9",
+			title: "Canonical string reduction",
+			author: "Edsger W. Dijkstra",
+			url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+			likes: 12,
+			__v: 0
+		},
+		{
+			_id: "5a422b891b54a676234d17fa",
+			title: "First class tests",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.htmll",
+			likes: 10,
+			__v: 0
+		},
+		{
+			_id: "5a422ba71b54a676234d17fb",
+			title: "TDD harms architecture",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html",
+			likes: 0,
+			__v: 0
+		},
+		{
+			_id: "5a422bc61b54a676234d17fc",
+			title: "Type wars",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html",
+			likes: 2,
+			__v: 0
+		}  
+	]
+	
+	const result = favoriteBlog.favoriteBlog(blogs)
+	expect(result).toEqual(
+		{
+			title: "Canonical string reduction",
+			author: "Edsger W. Dijkstra",
+			likes: 12
+		}
+	)
+})
+
+
+
+4.6 - 4.7 helper functions and unit tests
+
+************************************testing.js*******************************
+const favoriteBlog = (blogs) => {
+	let max = -1, maxKey = -1
+	
+	for (let i = 0; i < blogs.length; i++) {
+		if (blogs[i].likes > max) {
+			max = blogs[i].likes
+			maxKey = i
+		}
+	}
+	
+	if (blogs.length === 0) {
+		return "blogs empty"
+	}
+	
+	console.log(maxKey)
+	
+	const result = {
+		author: blogs[maxKey].author,
+		likes: blogs[maxKey].likes
+	}
+	
+	return result
+}
+
+
+
+module.exports = {
+	favoriteBlog
+}
+
+
+*********************************index.test.js**********************************
+const favoriteBlog = require('./testing.js')
+
+test('Blog likes', () => {
+	const blogs = [
+		{
+			_id: "5a422a851b54a676234d17f7",
+			title: "React patterns",
+			author: "Michael Chan",
+			url: "https://reactpatterns.com/",
+			likes: 7,
+			blogs: 5
+		},
+		{
+			_id: "5a422aa71b54a676234d17f8",
+			title: "Go To Statement Considered Harmful",
+			author: "Edsger W. Dijkstra",
+			url: "http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html",
+			likes: 5,
+			blogs: 15
+		},
+		{
+			_id: "5a422b3a1b54a676234d17f9",
+			title: "Canonical string reduction",
+			author: "Edsger W. Dijkstra",
+			url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
+			likes: 12,
+			blogs: 8
+		},
+		{
+			_id: "5a422b891b54a676234d17fa",
+			title: "First class tests",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.htmll",
+			likes: 10,
+			blogs: 10
+		},
+		{
+			_id: "5a422ba71b54a676234d17fb",
+			title: "TDD harms architecture",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html",
+			likes: 0,
+			blogs: 1
+		},
+		{
+			_id: "5a422bc61b54a676234d17fc",
+			title: "Type wars",
+			author: "Robert C. Martin",
+			url: "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html",
+			likes: 2,
+			blogs: 3
+		}  
+	]
+	
+	const result = favoriteBlog.favoriteBlog(blogs)
+	expect(result).toEqual(
+		{
+			author: "Edsger W. Dijkstra",
+			likes: 12
+		}
+	)
+})
+
+
+
+4.8 - 4.12 Blog List Tests
+
+const mongoose = require('mongoose')
+const supertest = require('supertest')
+const app = require('./app.js')
+const Blog = require("./Mongoose.js")
+
+
+const api = supertest(app)
+
+
+const InitialBlogs = [
+	{
+		title: 'TV Show Episode Scripts',
+		author: 'None',
+		url: 'https://www.springfieldspringfield.co.uk/tv_show_episode_scripts.php',
+		likes: 0,
+		id: '5d8d0b933b7603179c72cdcc'
+	},
+	{
+		title: 'Computer Programming',
+		author: 'None',
+		url: 'https://www.khanacademy.org/computing/computer-programming',
+		likes: 0,
+		id: '5d8d0b943b7603179c72cdcd'
+	}
+]
+
+
+beforeEach(async () => {
+	await Blog.deleteMany({})
+	console.log('cleared')
+	
+	/*
+	let blog = new Blog(InitialBlog[0])
+	await blog.save()
+	
+	blog = new Blog(InitialBlog[1])
+	await blog.save()
+	*/
+	
+	for (let blog of InitialBlogs) {
+		let blogOB = new Blog(blog)
+		await blogOB.save()
+	}
+	console.log('save')
+})
+
+
+test('get method if works', async () => {
+	 await api
+			.get('/blogs')
+			.expect(200)
+			.expect('Content-Type', /application\/json/)
+			
+	const res = await api.get('/blogs')
+	
+	expect(res.body.length).toBe(InitialBlogs.length)
+})
+
+
+test('id in blogs', async () => {
+	const res = await api.get('/blogs')
+	
+	console.log(res.body)
+	
+	for (let blog of res.body) {
+		console.log(blog.id)
+		expect(blog.id).toBeDefined()
+	}
+})
+
+
+test('post method if works', async () => {
+	const newBlog = {
+		title: 'Computer Type',
+		author: 'None',
+		url: 'https://www.aaaaaaaaan',
+		likes: 8
+	}
+	
+	await api
+			.post('/blogs')
+			.send(newBlog)
+			.expect(200)
+			.expect('Content-Type', /application\/json/)
+			
+	const blogs = await Blog.find({})
+	
+	expect(blogs.length).toBe(InitialBlogs.length + 1)
+})
+
+
+describe ('likes if missing', () => {
+	test('likes is not in object ', async() => {
+		const newBlog = {
+			title: 'Computer Type',
+			author: 'None',
+			url: 'https://www.aaaaaaaaan',
+		}
+		
+		const res = await api 
+						.post('/blogs')
+						.send(newBlog)
+						.expect(200)
+						
+		console.log(res.body)
+
+		expect(res.body.likes).toBe(0)
+	})
+	
+	test('likes equals to 0', async () => {
+		const newBlog = {
+			title: 'Computer Type',
+			author: 'None',
+			url: 'https://www.aaaaaaaaan',
+			likes: 8
+		}
+		
+		const res = await api 
+						.post('/blogs')
+						.send(newBlog)
+						.expect(200)
+		
+		console.log(res.body)
+
+		expect(res.body.likes).toBe(0)
+	})
+})
+
+
+test('post method', async() => {
+	const newBlog = {
+		author: 'None',
+		likes: 0
+	}
+	
+	await api
+			.post('/blogs')
+			.send(newBlog)
+			.expect(400)
+})
+
+
+afterAll(() => {
+  mongoose.connection.close()
+})
+
+
+
+4.13 - 4.14 Blog List Expansions
+
+Router.delete('/:id', async (req, res, next) => {
+	const id = req.params.id
+	
+	try {
+		await Blog.findByIdAndRemove(id)
+		res.status(204).end()
+	} catch(exception) {
+		next(exception)
+	}
+})
+
+Router.post('/', async (req, res, next) => {
+	
+	const body = req.body 
+
+
+	const blog = new Blog({
+		title: body.title,
+		author: body.author,
+		url: body.url,
+		likes: 0
+	})
+	
+	if (!body.url || !body.title || body.likes !== 0) {
+		return res.status(400).json({error: "Information Missing"})
+	}
+		
+	try {
+		const savedBlog = await blog.save()
+		res.json(savedBlog.toJSON())
+	} catch (exception) {
+		next(exception)
+	}
+})
+
+
+Router.put('/:id', async (req, res, next) => {
+	const id = req.params.id
+	const body = req.body
+	
+	
+	const blog = {
+		likes: body.likes
+	}
+	
+	try {
+		const updatedBlog = await Blog.findByIdAndUpdate(id, blog, {new : true})
+		res.json(updatedBlog.toJSON())
+	} catch(exception) {
+		next(exception)
+	}
+})
+
+
+
+4.15 - 4.19 Bloglist Expansion
+**************************************UserRouter***********************************************
+const bcrypt = require('bcrypt')
+const UserRouter = require('express').Router()
+const Mongoo = require('./Mongoose.js')
+
+
+UserRouter.get('/', async (req, res) => {
+	try {
+		const users = await Mongoo.User.find({}).populate('blogs', { title: 1, author: 1, url: 1, id: 1})
+		res.json(users.map(u => u.toJSON()))
+	} catch (error) {
+		console.log(error.message)
+	}
+  
+})
+
+UserRouter.post('/', async (req, res, next) => {
+  try {
+    const body = req.body
+
+    const saltRounds = 10
+    const passwordHash = await bcrypt.hash(body.password, saltRounds)
+
+    const user = new Mongoo.User({
+      username: body.username,
+      name: body.name,
+      passwordHash,
+    })
+	
+	if (!body.username || !body.password) {
+		return res.status(400).json({error: "Information Missing"})
+	}
+
+	if (body.username.length <= 3 || body.password.length <= 3) {
+		return res.status(400).json({error: "Invalid Username or Password"})
+	}
+	
+	const users = await Mongoo.User.find({})
+	const usernames = users.map(u => u.username)
+	
+	const getNames = usernames.find(u => u === body.username)
+	// console.log(getNames)
+	
+	if (getNames !== undefined) {
+		return res.status(400).json({error: "Username must be unique"})
+	}
+	
+    const savedUser = await user.save()
+    res.json(savedUser)
+  } catch (exception) {
+    next(exception)
+  }
+})
+
+
+
+module.exports = UserRouter
+
+*********************************LoginRouter****************************************
+
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcrypt')
+const loginRouter = require('express').Router()
+const Mongoo = require("./Mongoose.js")
+
+loginRouter.post('/', async (req, res) => {
+  const body = req.body
+
+  const user = await Mongoo.User.findOne({ username: body.username })
+  const passwordCorrect = user === null
+    ? false
+    : await bcrypt.compare(body.password, user.passwordHash)
+
+// console.log(body.password, user.passwordHash)
+// console.log(passwordCorrect)
+
+  if (!(user && passwordCorrect)) {
+    return res.status(401).json({
+      error: 'invalid username or password'
+    })
+  }
+
+  const userForToken = {
+    username: user.username,
+    id: user._id,
+  }
+
+// console.log(userForToken)
+
+  const token = jwt.sign(userForToken, process.env.SECRET)
+
+// console.log(token)
+
+  res
+    .status(200)
+    .send({ token, username: user.username, name: user.name })
+})
+
+module.exports = loginRouter
+
+**************************************BlogRouter****************************************
+
+const BlogRouter = require("express").Router()
+const Mongoo = require("./Mongoose.js")
+const jwt = require('jsonwebtoken')
+
+
+
+const getTokenFrom = (req) => {
+	const authorization = req.get('authorization')
+	if (authorization && authorization.toLowerCase().startsWith('bearer ')) {
+		return authorization.substring(7)
+	}
+	return null
+}
+
+
+
+BlogRouter.get('/', (req, res, next) => {
+  Mongoo.Blog
+		.find({}).populate('user', { username:1, name:1, id:1 })
+		.then(blogs => {
+			res.json(blogs.map(blog => blog.toJSON()))
+		})
+		.catch(error => next(error))
+})
+
+BlogRouter.post('/', async (req, res, next) => {
+	
+	const body = req.body 
+	
+	const token = getTokenFrom(req)
+	
+	try {
+		const decodedToken = jwt.verify(token, process.env.SECRET)
+		
+		// console.log(decodedToken)
+		
+		if (!token || !decodedToken.id) {
+			return res.status(401).json({ error: 'token missing or invalid' })
+		}
+		
+		const user = await Mongoo.User.findById(decodedToken.id)
+
+		const blog = new Mongoo.Blog({
+			title: body.title,
+			author: body.author,
+			url: body.url,
+			likes: body.likes,
+			user: user._id
+		})
+		
+		if (!body.url || !body.title) {
+			return res.status(400).json({error: "Information Missing"})
+		}
+			
+		body.likes = 0		
+			
+		const savedBlog = await blog.save()
+		user.blogs = user.blogs.concat(savedBlog._id)
+		await user.save()
+		res.json(savedBlog.toJSON())
+	} catch (exception) {
+		next(exception)
+	}
+})
+
+BlogRouter.put('/:id', async (req, res, next) => {
+	const id = req.params.id
+	const body = req.body
+	
+	
+	const blog = {
+		likes: body.likes
+	}
+	
+	try {
+		const updatedBlog = await Mongoo.Blog.findByIdAndUpdate(id, blog, {new : true})
+		res.json(updatedBlog.toJSON())
+	} catch(exception) {
+		next(exception)
+	}
+})
+
+
+
+module.exports = BlogRouter
